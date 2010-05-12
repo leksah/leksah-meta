@@ -1,0 +1,49 @@
+name: leksah-meta
+version: 0.8
+cabal-version: -any
+build-type: Simple
+license: GPL
+license-file: ""
+copyright: Juergen Nicklisch-Franken, Hamish Mackenzie
+maintainer: maintainer@leksah.org
+build-depends: Cabal >=1.6.0, base >=4.0.0.0 && <5.0.0.0, containers >=0.2,
+               directory -any, filepath >=1.1.0, ghc -any, leksah-server -any,
+               parsec -any, process-leksah -any
+stability: provisional
+homepage: http://www.leksah.org
+package-url: http://code.haskell.org/ltk
+bug-reports: http://code.google.com/p/leksah/issues/list
+synopsis: Scripts for leksah metadata administration
+description: Scripts for leksah metadata administration. Not needed for leksah users.
+category: IDE, Tools
+author: Juergen Nicklisch-Franken
+tested-with: GHC ==6.10 || ==6.12
+data-files:
+data-dir: ""
+extra-source-files:
+extra-tmp-files:
+ 
+executable: leksah-meta
+main-is: Main.hs
+buildable: True
+build-tools:
+cpp-options:
+cc-options:
+ld-options:
+pkgconfig-depends:
+frameworks:
+c-sources:
+extensions: CPP
+extra-libraries:
+extra-lib-dirs:
+includes:
+install-includes:
+include-dirs:
+hs-source-dirs: src
+other-modules:
+ghc-prof-options:
+ghc-shared-options:
+ghc-options:
+hugs-options:
+nhc98-options:
+jhc-options:
