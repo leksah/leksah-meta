@@ -25,7 +25,7 @@ import Control.Monad (liftM, filterM, when)
 import Data.Version (showVersion)
 import System.Environment (getArgs)
 import Paths_leksah_meta(version)
-import Data.Maybe (catMaybes)
+import Data.Maybe (isJust, catMaybes)
 import qualified Data.Map as Map
        (toList, empty, update, insert, lookup)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
@@ -46,7 +46,9 @@ import IDE.Utils.Utils
 import IDE.StrippedPrefs (Prefs(..), readStrippedPrefs)
 import IDE.Utils.Tool (runTool')
 import IDE.Utils.GHCUtils (getInstalledPackageInfos, inGhcIO)
-import IDE.Core.CTypes (packageIdentifierToString)
+import IDE.Core.CTypes
+       (mdMbSourcePath, ModuleDescr(..), PackageDescr(..),
+        metadataVersion, packageIdentifierToString, RetrieveStrategy(..))
 import System.Directory (doesFileExist, setCurrentDirectory)
 import IDE.System.Process (system)
 import qualified Distribution.InstalledPackageInfo as IPI
@@ -54,17 +56,22 @@ import Distribution.Package (PackageIdentifier(..))
 import Paths_leksah_meta (getDataDir)
 import PackageConfig (PackageConfig)
 import IDE.Metainfo.PackageCollector(collectPackage)
-import Control.Exception
-       (catch, SomeException)
+import Control.Exception (throw, catch, SomeException)
 import Prelude hiding (catch)
 import System.FilePath ((</>))
 import GHC.IO.Exception (ExitCode(..))
+import System.IO (hClose, openBinaryFile)
+import GHC.IO.IOMode (IOMode(..))
+import Data.Binary.Shared (decodeSer)
+import Control.DeepSeq (deepseq)
+import qualified Data.ByteString.Lazy as BSL
 
 leksahVersion = "0.8"
 
 data Flag =    ErrorLog String
              | FilterLog String
              | BuildLog String
+             | TestSource FilePath
              | VersionF
              | Help
        deriving (Show,Eq)
@@ -79,6 +86,8 @@ options =   [
                 "Removes all packages, for which metadata packages already exists"
          ,   Option ['b'] ["build"] (ReqArg BuildLog "BuildLog")
                "Process a package file and uploads packages"
+         ,   Option ['s'] ["testsource"] (ReqArg TestSource "TestSource")
+               "Tests if a '*.lksm' has source locations"
          ,   Option ['v'] ["version"] (NoArg VersionF)
                 "Show the version number"
          ,   Option ['h'] ["help"] (NoArg Help)
@@ -135,6 +144,37 @@ main = do
         []    -> return ()
         (h:_) -> processBuildLog h prefs
 
+    let testSource'     =  catMaybes $
+                            map (\x -> case x of
+                                TestSource s   -> Just s
+                                _            -> Nothing) o
+    case testSource' of
+        []    -> return ()
+        (h:_) -> processTestSource h prefs
+
+processTestSource :: FilePath -> Prefs -> IO ()
+processTestSource filePath prefs = do
+    file            <-  openBinaryFile filePath ReadMode
+    bs              <-  BSL.hGetContents file
+    let (metadataVersion', (packageInfo :: PackageDescr)) =   decodeSer bs
+    if metadataVersion /= metadataVersion'
+        then do
+            hClose file
+            error ("Metadata has a wrong version."
+                    ++  " Consider rebuilding metadata with: leksah-server -osb +RTS -N2 -RTS")
+        else do
+            packageInfo `deepseq` (hClose file)
+            let percentage = percentageSourceInPack packageInfo
+            putStrLn $ "percentage of module sources = " ++ show (percentage * 100.0) ++ " %"
+
+percentageSourceInPack :: PackageDescr -> Double
+percentageSourceInPack pd =
+    fromIntegral (sum (map ((\b -> if b then 1 else 0) . hasSourceInMod) (pdModules pd)))
+                                / fromIntegral (length (pdModules pd))
+
+hasSourceInMod :: ModuleDescr -> Bool
+hasSourceInMod = isJust . mdMbSourcePath
+
 processErrorLog :: FilePath -> Prefs -> IO ()
 processErrorLog filePath _ = do
     cont <- readFile filePath
@@ -185,7 +225,7 @@ processPackage  prefs pwd (packageId,_) = do
                 putStrLn $ "Failed to install package. Cabal can't install " ++ packageId
                 return True
             hd : [] -> do
-                collectPackage False prefs{retreiveURL = Nothing} 1 (hd, 1)
+                collectPackage False prefs{retrieveStrategy = NeverRetrieve} 1 (hd, 1)
                 collectorPath   <- getCollectorPath
                 setCurrentDirectory collectorPath
                 let filePath  = packageId ++ leksahMetadataSystemFileExtension

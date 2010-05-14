@@ -6,9 +6,10 @@ license: GPL
 license-file: ""
 copyright: Juergen Nicklisch-Franken, Hamish Mackenzie
 maintainer: maintainer@leksah.org
-build-depends: Cabal >=1.6.0, base >=4.0.0.0 && <5.0.0.0, containers >=0.2,
-               directory -any, filepath >=1.1.0, ghc -any, leksah-server -any,
-               parsec -any, process-leksah -any
+build-depends: Cabal >=1.6.0, base >=4.0.0.0 && <5.0.0.0,
+               binary-shared -any, bytestring -any, containers >=0.2,
+               deepseq -any, directory -any, filepath >=1.1.0, ghc -any,
+               leksah-server -any, parsec -any, process-leksah -any
 stability: provisional
 homepage: http://www.leksah.org
 package-url: http://code.haskell.org/ltk
