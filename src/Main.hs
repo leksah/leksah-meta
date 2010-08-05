@@ -11,11 +11,11 @@
 --
 -- | This script parses an server error log file for requested metadata and tries to build and upload
 -- missing metadata files
--- example usage: leksah-meta -eerror_log -ferror_log.processed -berror_log.processed.filtered
+-- example usage: leksah-meta -eerror_log -t50 -ferror_log.processed -berror_log.processed.filtered
 -----------------------------------------------------------------------------
 
 module Main (
-
+    main
 
 ) where
 
@@ -36,7 +36,6 @@ import Data.List (sortBy, isSuffixOf)
 import qualified Text.ParserCombinators.Parsec.Token as P
        (whiteSpace, makeTokenParser,symbol)
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
-import Debug.Trace (trace)
 import GHC.IO (liftIO)
 import IDE.Utils.FileUtils
        (getCollectorPath, getConfigFilePathForLoad)
@@ -65,13 +64,16 @@ import GHC.IO.IOMode (IOMode(..))
 import Data.Binary.Shared (decodeSer)
 import Control.DeepSeq (deepseq)
 import qualified Data.ByteString.Lazy as BSL
+import IDE.Utils.FileUtils(allFilesWithExtensions)
 
 leksahVersion = "0.8"
 
 data Flag =    ErrorLog String
              | FilterLog String
              | BuildLog String
+             | Threshold (Maybe String)
              | TestSource FilePath
+             | TestSourceDir FilePath
              | VersionF
              | Help
        deriving (Show,Eq)
@@ -82,12 +84,16 @@ options =   [
 -- main functions
              Option ['e'] ["errorlog"] (ReqArg ErrorLog "ErrorLog")
                 "Process an error log and outputs a file with wanted package"
+         ,   Option ['t'] ["treshold"] (OptArg Threshold "Threshold")
+                "Filters packages which have less accesses then the given integer"
          ,   Option ['f'] ["filter"] (ReqArg FilterLog "FilterLog")
                 "Removes all packages, for which metadata packages already exists"
          ,   Option ['b'] ["build"] (ReqArg BuildLog "BuildLog")
                "Process a package file and uploads packages"
          ,   Option ['s'] ["testsource"] (ReqArg TestSource "TestSource")
-               "Tests if a '*.lksm' has source locations"
+               "Tests if a '*.lkshm' has source locations"
+         ,   Option ['d'] ["testsourcedir"] (ReqArg TestSourceDir "TestSourceDir")
+               "Tests if all '*.lkshm' files in a directory have source locations"
          ,   Option ['v'] ["version"] (NoArg VersionF)
                 "Show the version number"
          ,   Option ['h'] ["help"] (NoArg Help)
@@ -120,13 +126,21 @@ main = do
     prefsPath       <- getConfigFilePathForLoad strippedPreferencesFilename Nothing dataDir
     prefs           <- readStrippedPrefs prefsPath
 
+    let thresholdL    =  catMaybes $
+                            map (\x -> case x of
+                                Threshold (Just s)   -> Just (read s)
+                                _             -> Nothing) o
+    let threshold     =  case thresholdL of
+                            [] -> Nothing
+                            (a:_) -> Just a
+
     let errorLog'     =  catMaybes $
                             map (\x -> case x of
                                 ErrorLog s   -> Just s
                                 _            -> Nothing) o
     case errorLog' of
         []    -> return ()
-        (h:_) -> processErrorLog h prefs
+        (h:_) -> processErrorLog h prefs threshold
 
     let filterLog'    =  catMaybes $
                             map (\x -> case x of
@@ -150,10 +164,23 @@ main = do
                                 _            -> Nothing) o
     case testSource' of
         []    -> return ()
-        (h:_) -> processTestSource h prefs
+        (h:_) -> processTestSource prefs h
 
-processTestSource :: FilePath -> Prefs -> IO ()
-processTestSource filePath prefs = do
+    let testSourceDir'     =  catMaybes $
+                            map (\x -> case x of
+                                TestSourceDir s   -> Just s
+                                _            -> Nothing) o
+    case testSourceDir' of
+        []    -> return ()
+        (h:_) -> processTestSourceDir prefs h
+
+processTestSourceDir :: Prefs -> FilePath -> IO ()
+processTestSourceDir prefs dirPath = do
+    files <- allFilesWithExtensions [".lkshm"] True [] dirPath
+    mapM_ (processTestSource prefs) files
+
+processTestSource :: Prefs -> FilePath ->   IO ()
+processTestSource prefs  filePath = do
     file            <-  openBinaryFile filePath ReadMode
     bs              <-  BSL.hGetContents file
     let (metadataVersion', (packageInfo :: PackageDescr)) =   decodeSer bs
@@ -165,7 +192,7 @@ processTestSource filePath prefs = do
         else do
             packageInfo `deepseq` (hClose file)
             let percentage = percentageSourceInPack packageInfo
-            putStrLn $ "percentage of module sources = " ++ show (percentage * 100.0) ++ " %"
+            putStrLn $ filePath ++ "percentage of module sources = " ++ show (percentage * 100.0) ++ " %"
 
 percentageSourceInPack :: PackageDescr -> Double
 percentageSourceInPack pd =
@@ -175,18 +202,22 @@ percentageSourceInPack pd =
 hasSourceInMod :: ModuleDescr -> Bool
 hasSourceInMod = isJust . mdMbSourcePath
 
-processErrorLog :: FilePath -> Prefs -> IO ()
-processErrorLog filePath _ = do
+processErrorLog :: FilePath -> Prefs -> Maybe Int -> IO ()
+processErrorLog filePath _ threshold = do
     cont <- readFile filePath
     let packageNames = catMaybes $ map parse (lines cont)
     let resMap = foldr (\ str amap -> case Map.lookup str amap of
                                         Nothing -> Map.insert str 1 amap
                                         Just i -> Map.insert str (i + 1) amap) Map.empty packageNames
-    writeFile (filePath ++ ".processed") (show (sortBy (\(_,n1) (_,n2) -> compare n2 n1) (Map.toList resMap)))
+    let list = Map.toList resMap
+    let shorterList = case threshold of
+                        Nothing -> list
+                        Just t -> filter (\(_,n1) -> n1 >= t) list
+    writeFile (filePath ++ ".processed") (show (sortBy (\(_,n1) (_,n2) -> compare n2 n1) shorterList))
     where
     parse :: String -> Maybe String
     parse str = case Parsec.parse lineParser "" str of
-                        Left e   -> trace (show e) Nothing
+                        Left e   -> Nothing
                         Right r  -> Just r
 
 processFilterLog :: FilePath -> Prefs -> IO ()
@@ -234,6 +265,7 @@ processPackage  prefs pwd (packageId,_) = do
                 exists2 <- doesFileExist filePath2
                 if exists1 && exists2
                     then do
+                    -- wput example.lkshm ftp://leksah:pwd@www.leksah.org:21/httpdocs/metadata-0.8/
                         let wputarg = filePath ++ " " ++ "ftp://leksah:" ++ pwd ++ "@www.leksah.org:21/httpdocs/metadata-" ++ leksahVersion ++ "/"
                         system $ "wput " ++ wputarg
                         putStrLn $ "Success with uploading metadata for package " ++ packageId
@@ -271,7 +303,7 @@ lineParser = do
 urlParser :: CharParser () String
 urlParser = do
     str <- manyTill anyChar eof
-    if trace ("[" ++ str ++ "]") $ isSuffixOf ".lkshm" str
+    if isSuffixOf ".lkshm" str
         then return (reverse (drop 6 (takeWhile (/= '/') (reverse str))))
         else fail "no .lkshm"
     <?> "urlParser"
