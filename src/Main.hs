@@ -11,6 +11,12 @@
 --
 -- | This script parses an server error log file for requested metadata and tries to build and upload
 -- missing metadata files
+-- 1. download error log from plesk (don't know uri to automate this)
+-- 2. analyze error log  leksah-meta --error_log=error_log (maybe with -t50)
+-- 3. leksah-meta --filter=error_log.processed
+-- 3. backup user db
+-- 4. leksah-meta --build=error_log.processed.filtered
+-- 5. recover user db
 -- example usage: leksah-meta -eerror_log -t50 -ferror_log.processed -berror_log.processed.filtered
 -----------------------------------------------------------------------------
 
@@ -32,7 +38,7 @@ import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Text.ParserCombinators.Parsec
        (getInput, optional, option, try, (<|>), oneOf, alphaNum, manyTill,
         eof, anyChar, sepBy, (<?>), noneOf, many, char, CharParser)
-import Data.List (sortBy, isSuffixOf)
+import Data.List (sortBy, isSuffixOf, isInfixOf)
 import qualified Text.ParserCombinators.Parsec.Token as P
        (whiteSpace, makeTokenParser,symbol)
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
@@ -66,7 +72,7 @@ import Control.DeepSeq (deepseq)
 import qualified Data.ByteString.Lazy as BSL
 import IDE.Utils.FileUtils(allFilesWithExtensions)
 
-leksahVersion = "0.8"
+leksahVersion = "0.9"
 
 data Flag =    ErrorLog String
              | FilterLog String
@@ -174,6 +180,8 @@ main = do
         []    -> return ()
         (h:_) -> processTestSourceDir prefs h
 
+
+
 processTestSourceDir :: Prefs -> FilePath -> IO ()
 processTestSourceDir prefs dirPath = do
     files <- allFilesWithExtensions [".lkshm"] True [] dirPath
@@ -210,9 +218,10 @@ processErrorLog filePath _ threshold = do
                                         Nothing -> Map.insert str 1 amap
                                         Just i -> Map.insert str (i + 1) amap) Map.empty packageNames
     let list = Map.toList resMap
+    let versionList = filter (\(s1,_) -> isInfixOf ("metadata-" ++ leksahVersion) s1) list
     let shorterList = case threshold of
                         Nothing -> list
-                        Just t -> filter (\(_,n1) -> n1 >= t) list
+                        Just t -> filter (\(_,n1) -> n1 >= t) versionList
     writeFile (filePath ++ ".processed") (show (sortBy (\(_,n1) (_,n2) -> compare n2 n1) shorterList))
     where
     parse :: String -> Maybe String

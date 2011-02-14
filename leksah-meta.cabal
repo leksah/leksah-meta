@@ -6,9 +6,9 @@ license: GPL
 license-file: ""
 copyright: Juergen Nicklisch-Franken, Hamish Mackenzie
 maintainer: maintainer@leksah.org
-build-depends: Cabal >=1.6.0.1 && <1.9, base >= 4.0.0.0 && <4.3,
-               binary-shared >=0.8 && <0.9, bytestring >=0.9.0.1 && <0.10, containers >=0.2.0.0 && <0.4,
-               deepseq -any, directory >=1.0.0.2 && <1.1, filepath >=1.1.0.1 && <1.2, ghc -any,ghc >=6.10.1 && <6.13,
+build-depends: Cabal >=1.6.0 && <1.11, base >=4.0.0.0 && <4.4,
+               binary-shared >=0.8 && <0.9, bytestring >=0.9.0.1 && <0.10, containers >=0.2 && <0.5,
+               deepseq -any, directory >=1.0.0.2 && <1.2, filepath >=1.1.0.1 && <1.3, ghc >=6.10.1 && <7.2,
                leksah-server >= 0.9.0 && < 1.0.0, parsec >=2.1.0.1 && <2.2, process-leksah >=1.0.1.3 && <1.1
 stability: provisional
 homepage: http://www.leksah.org
