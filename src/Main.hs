@@ -55,7 +55,7 @@ import IDE.Core.CTypes
        (mdMbSourcePath, ModuleDescr(..), PackageDescr(..),
         metadataVersion, packageIdentifierToString, RetrieveStrategy(..))
 import System.Directory (doesFileExist, setCurrentDirectory)
-import IDE.System.Process (system)
+import System.Process (system)
 import qualified Distribution.InstalledPackageInfo as IPI
 import Distribution.Package (PackageIdentifier(..))
 import Paths_leksah_meta (getDataDir)
